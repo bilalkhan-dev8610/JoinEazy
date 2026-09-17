@@ -1,27 +1,40 @@
 import axios from 'axios';
 
-// Base URL is read from an env var so it can differ between local dev,
-// docker-compose, and any future deployment target.
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+// Backend API URL
+const baseURL =
+  import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL,
-  // Auth is cookie-based (httpOnly JWT cookie set by the backend), so
-  // every request needs to carry credentials for protected routes to work.
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-api.interceptors.request.use((config) => config);
+// Attach JWT token to every protected API request
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
 
-// Placeholder response interceptor: centralizes error logging so
-// individual pages don't need repeated try/catch boilerplate.
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Centralized error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('[api error]', error?.response?.data || error.message);
+    console.error(
+      '[api error]',
+      error?.response?.data || error.message
+    );
+
     return Promise.reject(error);
   }
 );
