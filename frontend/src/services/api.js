@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-// Backend API URL
 const baseURL =
   import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -12,7 +11,7 @@ const api = axios.create({
   },
 });
 
-// Attach JWT token to every protected API request
+// Attach JWT token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -26,7 +25,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Centralized error handling
+// Error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
