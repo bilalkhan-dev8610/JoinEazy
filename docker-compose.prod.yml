@@ -1,0 +1,85 @@
+# Production compose file. Differences from docker-compose.yml (local dev):
+#   - frontend is built from Dockerfile.prod (static build served by nginx
+#     on port 80) instead of the Vite dev server.
+#   - backend runs with NODE_ENV=production, which makes the auth cookie
+#     `secure` (HTTPS-only) — see the HTTPS note in README.md before using
+#     this file.
+#   - no insecure defaults for Postgres credentials; every secret must be
+#     supplied via your real .env file.
+#
+# Usage:
+#   cp .env.example .env   # fill in real values, no defaults here
+#   docker compose -f docker-compose.prod.yml up --build -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: joineazy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PGDATABASE:?PGDATABASE is required}
+      POSTGRES_USER: ${PGUSER:?PGUSER is required}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - joineazy-net
+    # No published port here — only the backend container needs to reach
+    # Postgres, so keep it off the public internet. Expose it explicitly
+    # (uncomment) only if you need external DB access.
+    # ports:
+    #   - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: joineazy-backend
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:?CLIENT_ORIGIN is required (your live frontend URL)}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE}
+      PGUSER: ${PGUSER}
+      PGPASSWORD: ${PGPASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      JWT_COOKIE_MAX_AGE_MS: ${JWT_COOKIE_MAX_AGE_MS:-86400000}
+      GROUP_MAX_MEMBERS: ${GROUP_MAX_MEMBERS:-4}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - joineazy-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?VITE_API_BASE_URL is required (your live backend URL + /api)}
+    container_name: joineazy-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - joineazy-net
+
+volumes:
+  pgdata:
+
+networks:
+  joineazy-net:
+    driver: bridge
